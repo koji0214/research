@@ -1,5 +1,3 @@
-#%%
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -72,6 +70,7 @@ class EMG:
         b, a = sp.signal.butter(degree, [h_freq, l_freq], btype=btype)
         for ch in self.filtered.columns:
             self.filtered[ch] = sp.signal.filtfilt(b, a, self.filtered[ch])
+        return self.filtered
     
     
     
@@ -103,7 +102,7 @@ class EMG:
         event_idx = self.events[self.events == foot].index
         
         # datはあればそのまま、それ以外では一番最新の前処理をしたところまでのもの
-        if dat:
+        if dat is locals():
             dat = dat
         elif self.smoothing:
             dat = self.smoothed
@@ -127,6 +126,7 @@ class EMG:
                     self.epochs = dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:].values[np.newaxis]
             self.lln = True
             self.lln_epochs = self.epochs
+            return self.epochs
         else:
             emg_epochs = []
             for ev in range(len(event_idx)):
@@ -138,6 +138,7 @@ class EMG:
             
             if lln or n:
                 self.lln_list(n)
+            return self.epochs
         
       
     def lln_list(self, n=100):
@@ -152,6 +153,7 @@ class EMG:
                 epochs[i,:,j] = self.approx(epoch[mus], method, n)
         self.lln_epochs = epochs
         self.lln = True
+        return self.lln_epochs
 
     def plot_bar(self, foot = "Rt_foot", ax = None, ymax = None, ymin = None):
         if "Rt" in foot:
@@ -252,7 +254,7 @@ class EMG:
     def exclude_epoch(self):
         epochs = self.epochs
 
-    def plot_raw(self, figsize=(10, 18), add_mean = True, ymax=None, ymin=None):
+    def plot_raw(self, figsize=(15, 35), add_mean = True, ymax=None, ymin=None):
         if not self.lln:
             ValueError("This Instance is not done LLN.")
 
@@ -276,79 +278,95 @@ class EMG:
             a.set_xlabel("sycle(%)")
             a.set_ylim(ymin,ymax)
 
-    def plot_corr(self, hist = False):
+    def plot_corr(self, hist = False, figsize = (15, 35), heatmap = False):
         if self.lln:
             ValueError("plot_corr() must be done after epoching(lln=True) or lln_list()")
-        if not hist:
+        
+        # _mn = self.lln_epochs.mean(axis=0)  # 軸固定できる
+        # plt.plot(_mn)
+        fig, ax = plt.subplots(7,2,figsize=figsize)
+        
+        bigCorr = []
+        for i, a in enumerate(ax.flatten(order="F")):
+            ave = self.lln_epochs[:,:,i].mean(axis=0)
+            # a.plot(ave)
+            ave = pd.Series(ave)
             corr = []
-            for i in range(self.lln_epochs.shape[2]):
-                ave = self.lln_epochs[:,:,i].mean(axis=0)
-                plt.plot(ave)
+            for sig in self.lln_epochs[:,:,i]:
+                sig = pd.Series(sig)
+                corr.append(ave.corr(sig))
+            if not hist:
+                a.plot(np.abs(corr))
+                a.set_ylim(-0.05,1.05)
+                a.set_ylabel("correlation")
+            else:
+                a.hist(np.abs(corr), range=(0,1), bins = 20)
+                # a.set_xlim(-0.05,1.05)
+            bigCorr.append(corr)    
+            a.set_title(self.labels[i])
+        self.bigCorr = pd.DataFrame(bigCorr, index=self.labels[:14])
+        if heatmap:
+            fig, ax = plt.subplots(figsize=(10,8))
+            plt.imshow(np.abs(self.bigCorr), cmap="inferno", aspect=3)
+            plt.colorbar()
+    
+    def culc_coherence(self, degree = 4, high_freq = 5, low_freq = 250, average = True):
+        filt = self.filering(degree=degree, high_freq = high_freq, low_freq = low_freq)
+        epoch = self.epoching(filt)
+        # print(len(epoch))
+        nperseg = 512
+        res = np.zeros([int(nperseg/2)+1, 14,14])
+        # print(res.shape)
+        self.coherence = np.ndarray((1,int(nperseg/2)+1,14,14))
+        self.drop_log = []
+        for a, df in enumerate(epoch):
+            if df.shape[0] < 512:  # 異常な長さのエポックは処理をスキップする
+                self.drop_log.append(f"{a}th epoch is droped because it is too short to calculate coherence")
+                continue
+            for i,la1 in enumerate(df):
+                for j,la2 in enumerate(df):
+                    x = df[la1]
+                    y = df[la2]
+                    f, Cxy = signal.coherence(y, x, fs=1000, nperseg=nperseg)
+                    res[:,i,j] = Cxy
+                    
+            self.coherence = np.append(self.coherence, res[np.newaxis],axis=0)
+        # print(Cxy.shape)
+        a = 8<=f
+        b = f<13
+        alpha = a==b  # alpha
+        a = 13<=f
+        b = f < 26
+        beta = a==b  #beta
+        a = 26<=f
+        b = f < 30
+        gamma = a==b  #gamma
+        a = 0.5<=f
+        b = f < 4
+        delta = a==b  #delta
+        a = 4<=f
+        b = f < 8
+        theta = a==b  # theta
+        crt = {"alpha 8~13Hz" : alpha, "beta 13~26Hz" : beta, "gamma 26~30Hz" : gamma, "delta 0.5~4Hz" : delta, "theta 4~8Hz" : theta}
+        self.coherence = self.coherence ** 2
+        
+        self.bigCoh = [[] for i in range(5)]  # 周期ごとのcoherenceを記録
+        stack_coh = {"alpha 8~13Hz" : np.zeros([1,14,14]), "beta 13~26Hz" : np.zeros([1,14,14]), "gamma 26~30Hz" : np.zeros([1,14,14]),
+                     "delta 0.5~4Hz" : np.zeros([1,14,14]), "theta 4~8Hz" : np.zeros([1,14,14])}  # epochごとのコヒーレンスをarrayとして記録し、平均する用
+        for coh in self.coherence:
+            for i, ct in enumerate(crt):
+                coherence = coh[crt[ct],:,:].mean(axis=0)
+                stack_coh[ct] = np.append(stack_coh[ct], coherence[np.newaxis], axis = 0)
+                coherence = pd.DataFrame(coherence, index=self.labels[:14], columns=self.labels[:14])
+                self.bigCoh[i].append(coherence)
 
+        if average:
+            self.bigCoh_average = []
+            for st in stack_coh:
+                coh = stack_coh[st]
+                coh = coh.mean(axis=0)
+                self.bigCoh_average.append(coh)
+            
+            return self.bigCoh_average
 
-# %%
-
-import os
-os.getcwd()
-
-# %%
-
-fname = "../data/Data_original/Elderly/EMG/sub05/noRAS1.mat"
-emg = EMG(fname)
-# %%
-
-emg.filering(degree=4, high_freq=0.5,low_freq=250)
-emg.smooth()
-emg.epoching(n=1000)
-emg.plot_raw(ymax=0.03, ymin=0, add_mean=True)
-# %%
-fname = "../data/Data_original/Elderly/EMG/sub05/noRAS1.mat"
-emg_no = EMG(fname)
-fname = "../data/Data_original/Elderly/EMG/sub05/noRAS2.mat"
-emg_no2 = EMG(fname)
-fname = "../data/Data_original/Elderly/EMG/sub05/RAS90.mat"
-emg_90 = EMG(fname)
-fname = "../data/Data_original/Elderly/EMG/sub05/RAS100.mat"
-emg_100 = EMG(fname)
-fname = "../data/Data_original/Elderly/EMG/sub05/RAS110.mat"
-emg_110 = EMG(fname)
-
-EMG.comp_box([emg_no, emg_no2, emg_90, emg_100, emg_110], labels=["no","no2","90","100","110"], ymin = 700, ymax = 1400)
-# # %%
-# emg_no.filering(degree=4, high_freq=0.5,low_freq=250)
-# emg_no.smooth()
-# emg_no.epoching(n=1000)
-# emg_no.plot_raw(ymax=0.1, ymin=0, add_mean=True)
-# plt.savefig("../misc/plot/1216/emg_signal_no.png")
-
-# # %%
-# emg_no2.filering(degree=4, high_freq=0.5,low_freq=250)
-# emg_no2.smooth()
-# emg_no2.epoching(n=1000)
-# emg_no2.plot_raw(ymax=0.1, ymin=0, add_mean=True)
-# plt.savefig("../misc/plot/1216/emg_signal_no2.png")
-# # %%
-# emg_90.filering(degree=4, high_freq=0.5,low_freq=250)
-# emg_90.smooth()
-# emg_90.epoching(n=1000)
-# emg_90.plot_raw(ymax=0.1, ymin=0, add_mean=True)
-# plt.savefig("../misc/plot/1216/emg_signal_90.png")
-# # %%
-# emg_100.filering(degree=4, high_freq=0.5,low_freq=250)
-# emg_100.smooth()
-# emg_100.epoching(n=1000)
-# emg_100.plot_raw(ymax=0.1, ymin=0, add_mean=True)
-# plt.savefig("../misc/plot/1216/emg_signal_100.png")
-# # %%
-# emg_110.filering(degree=4, high_freq=0.5,low_freq=250)
-# emg_110.smooth()
-# emg_110.epoching(n=1000)
-# emg_110.plot_raw(ymax=0.1, ymin=0, add_mean=True)
-# plt.savefig("../misc/plot/1216/emg_signal_110.png")
-
-#%%
-emg_no.filering(degree=4, high_freq=0.5,low_freq=250)
-emg_no.smooth()
-emg_no.epoching(n=1000)
-emg_no.plot_corr()
-# %%
+        return self.bigCoh
