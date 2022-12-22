@@ -5,6 +5,8 @@ import scipy as sp
 import scipy.signal as signal
 from scipy.interpolate import interp1d
 import seaborn as sns
+from matplotlib import animation, rc
+# from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 class EMG:
     # 基本変数の定義
@@ -16,6 +18,7 @@ class EMG:
     smoothing = False # 平滑化
     nyq = sampling_rate/2
     lln = False
+    coh_titles = ["alpha 8~13Hz", "beta 13~26Hz", "gamma 26~30Hz", "delta 0.5~4Hz", "theta 4~8Hz"]
     
     def __init__(self, fname):
         mat = sp.io.loadmat(fname)
@@ -211,7 +214,7 @@ class EMG:
         
     
     @staticmethod
-    def comp_box(emgs, labels = None, foot = "Rt_foot", ax = None, ymax = None, ymin = None, strip = True):
+    def comp_epochs(emgs, labels = None, foot = "Rt_foot", ax = None, ymax = None, ymin = None, strip = True):
         if labels == None or len(emgs) != len(labels):
             labels = np.arange(len(emgs))
         if len(emgs) != len(labels):
@@ -310,13 +313,22 @@ class EMG:
             plt.imshow(np.abs(self.bigCorr), cmap="inferno", aspect=3)
             plt.colorbar()
     
+    # 波形のばらつき具合を条件間で検定
+    @staticmethod
+    def comp_corr(emgs, labels = None, foot = "Rt_foot", ax = None, ymax = None, ymin = None, strip = True):
+        for i, emg in enumerate(emgs):
+            if emg.bigCorr is not locals():
+                ValueError(f"{i+1}th emg has no bigCorr object.")
+            
+        
+        
+       
+    
     def culc_coherence(self, degree = 4, high_freq = 5, low_freq = 250, average = True):
         filt = self.filering(degree=degree, high_freq = high_freq, low_freq = low_freq)
         epoch = self.epoching(filt)
-        # print(len(epoch))
         nperseg = 512
         res = np.zeros([int(nperseg/2)+1, 14,14])
-        # print(res.shape)
         self.coherence = np.ndarray((1,int(nperseg/2)+1,14,14))
         self.drop_log = []
         for a, df in enumerate(epoch):
@@ -331,7 +343,6 @@ class EMG:
                     res[:,i,j] = Cxy
                     
             self.coherence = np.append(self.coherence, res[np.newaxis],axis=0)
-        # print(Cxy.shape)
         a = 8<=f
         b = f<13
         alpha = a==b  # alpha
@@ -370,3 +381,40 @@ class EMG:
             return self.bigCoh_average
 
         return self.bigCoh
+    
+    
+    def plot_coherence(self, average = True):
+        if average:
+            coh = self.bigCoh_average
+            fig, ax = plt.subplots(5,1,figsize=(7,15))
+            for i, (c, a) in enumerate(zip(coh, ax)):
+                im = a.imshow(c)
+                plt.colorbar(im, ax=a)
+                a.set_title(self.coh_titles[i])
+        else:
+            coh = self.bigCoh
+            self.coherence_map = []
+            fig,ax = plt.subplots(5, 1, figsize=(10,15))
+            for i, (_coh, a) in enumerate(zip(coh, ax)):
+                for j, c in enumerate(_coh):
+                    _coherence = []
+                    index = []
+                    for _r in range(14):
+                        for _c in range(14):
+                            if _c >= _r:
+                                continue
+                            index.append(f"{c.index[_c]}-{c.index[_r]}")
+                            _coherence.append(c.iat[_r, _c])
+                    _coherence = pd.Series(_coherence, index=index)
+                    if j == 0:
+                        coherence = _coherence
+                    else:
+                        coherence = pd.concat([coherence, _coherence], axis=1)
+                # im = a.imshow(coherence, cmap="inferno", aspect=0.3)
+                # plt.colorbar(im, ax=a)
+                coherence.columns = np.arange(coherence.shape[1])
+                self.coherence_map.append(coherence)
+                sns.heatmap(coherence, ax=a, cmap="inferno")
+                a.set_title(self.coh_titles[i])
+    
+    

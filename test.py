@@ -1,31 +1,38 @@
-#%%
+# %%
 from preprocess import EMG
 import matplotlib.pyplot as plt
 
-fname = "../data/Data_original/Elderly/EMG/sub05/noRAS1.mat"
-emg = EMG(fname)
-emg.filering(degree=4, high_freq=0.5,low_freq=250)
-emg.smooth()
-emg.epoching(n=1000)
+isElderly = "Elderly"
+sub = "sub05"
+ras = "noRAS1"
 
-# 各筋ごとにばらつきがどの程度かを相関係数で評価
+fname = f"../data/Data_original/{isElderly}/EMG/{sub}/{ras}.mat"
+emg = EMG(fname)
+# emg.filering(degree=4, high_freq=0.5,low_freq=250)
+# emg.smooth()
+# emg.epoching(n=1000)
+
+# # 各筋ごとにばらつきがどの程度かを相関係数で評価
 # emg.plot_corr(hist=True) 
 # emg.plot_corr(hist=False)
 
-#%%
+# # %%
 
 # # 筋のばらつきが特定の周期で優位に見られるか、階層的クラスタリングで評価
-# import seaborn as sns
+# seabornのclustermapをちゃんと理解する
+# https://nykergoto.hatenablog.jp/entry/2018/11/19/seaborn_の_clustermap_をちゃんと理解する
+import seaborn as sns
 # cluster = sns.clustermap(emg.bigCorr)
 
-#%%
-# plt.show()
+# %%
+coherence = emg.culc_coherence()
+emg.plot_coherence(average=False)
 
-coherence = emg.culc_coherence(average=False)
-plt.imshow(coherence[0][3])
-plt.show()
-# print(len(coherence))
-# print(coherence[0].shape)
+
 
 # %%
-# print(emg.coherence[0].mean(axis=0))
+for i, _coherence in enumerate(emg.coherence_map):
+    g = cluster = sns.clustermap(_coherence)
+    g.ax_col_dendrogram.set_title(emg.coh_titles[i])
+
+plt.show()
