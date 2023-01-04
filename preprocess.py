@@ -5,7 +5,7 @@ import scipy as sp
 import scipy.signal as signal
 from scipy.interpolate import interp1d
 import seaborn as sns
-from matplotlib import animation, rc
+# from matplotlib import animation, rc
 # from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 class EMG:
@@ -281,7 +281,7 @@ class EMG:
             a.set_xlabel("sycle(%)")
             a.set_ylim(ymin,ymax)
 
-    def plot_corr(self, hist = False, figsize = (15, 35), heatmap = False):
+    def plot_corr(self, hist = False, figsize = (12, 35), heatmap = False):
         if self.lln:
             ValueError("plot_corr() must be done after epoching(lln=True) or lln_list()")
         
@@ -310,8 +310,9 @@ class EMG:
         self.bigCorr = pd.DataFrame(bigCorr, index=self.labels[:14])
         if heatmap:
             fig, ax = plt.subplots(figsize=(10,8))
-            plt.imshow(np.abs(self.bigCorr), cmap="inferno", aspect=3)
-            plt.colorbar()
+            # plt.imshow(np.abs(self.bigCorr), cmap="inferno", aspect=3)
+            # plt.colorbar()
+            sns.heatmap(np.abs(self.bigCorr), cmap="inferno")
     
     # 波形のばらつき具合を条件間で検定
     @staticmethod
@@ -394,7 +395,7 @@ class EMG:
         else:
             coh = self.bigCoh
             self.coherence_map = []
-            fig,ax = plt.subplots(5, 1, figsize=(10,15))
+            fig,ax = plt.subplots(5, 1, figsize=(10,20))
             for i, (_coh, a) in enumerate(zip(coh, ax)):
                 for j, c in enumerate(_coh):
                     _coherence = []
