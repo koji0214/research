@@ -1,3 +1,4 @@
+# %%
 import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
@@ -7,5 +8,122 @@ from sklearn.decomposition import NMF
 class MuscleSynergy:
     def __init__(self, max_n_components):
         self.max_n_components = max_n_components
+        self.best_n = None
+        self.best_syn = None
+        self.vaf_log = "You must do est_best_n function before this command"
+        self.nmf_log = "You must do est_best_n function before this command"
+
+    def fit(self, X, subject):
+        self.X = X
+        self.subject = subject
+
+    def _culc_loss(self, X, n_components = None):
+        nmf = NMF(n_components=n_components)
+        nmf.fit(X)
+        W = nmf.components_
+        C = nmf.fit_transform(X)
+        WC = np.dot(C, W)
+        return np.sum((X - WC)**2), nmf
+
+    def f_nmf(self, n_components = None, max_iter=20):
+        old_loss, old_nmf = self._culc_loss(X = self.X, n_components=n_components)
+        for i in range(max_iter - 1):
+            loss, nmf = self._culc_loss(X = self.X, n_components=n_components)
+            if loss < old_loss:
+                old_loss = loss
+                old_nmf = nmf
+        return old_nmf
+
+    def _culc_vaf(self, nmf):
+        W = nmf.components_
+        C = nmf.fit_transform(self.X)
+        WC = np.dot(C, W)
+        e = self.X - WC
+        vaf = 1 - (np.sum(e**2)/np.sum(self.X**2))
+        return vaf
+
+    def _culc_vaf_mus(self, nmf, axis = 0):
+        W = nmf.components_
+        C = nmf.fit_transform(self.X)
+        WC = np.dot(C, W)
+        e = self.X - WC
+        vaf_mus = []
+        if axis == 0:
+            for i in range(self.X.shape[1]):
+                xi = self.X.T[i]
+                ei = e.T[i]
+                vaf_i = 1 - (np.sum(ei**2)/np.sum(xi**2))
+                vaf_mus.append(vaf_i)
+        else:
+            for i in range(self.X.shape[0]):
+                xi = self.X[i]
+                ei = e[i]
+                vaf_i = 1 - (np.sum(ei**2)/np.sum(xi**2))
+                vaf_mus.append(vaf_i)
+        return vaf_mus
+
+    def est_best_n(self, threshold = 0.75):
+        self.vaf_log = []
+        self.nmf_log = {}
+        for n in range(self.max_n_components):
+            nmf = self.f_nmf(n+1)
+            vaf = self._culc_vaf(nmf)
+            # print(n + 1, vaf)
+            self.vaf_log.append(vaf)
+            self.nmf_log[f"{n+1}"] = nmf
+        
+        for i, vaf in enumerate(self.vaf_log):
+            if vaf > threshold:
+                nmf = self.nmf_log[f"{i+1}"]
+                vaf_mus = self._culc_vaf_mus(nmf)
+                if np.min(vaf_mus) > 0.9:
+                    print(i+1, vaf, vaf_mus)
+                    break
+        self.best_n = i+1
+        best_syn = self.nmf_log[f"{i+1}"]
+        self.best_syn = {"W":best_syn.components_, "C":best_syn.fit_transform(self.X)}
+        return i+1
+
+    def plot_vaf(self, ax = None):
+        if not ax:
+            fig, ax = plt.subplots()
+        ax.plot(self.vaf_log, '--', color = "black", marker = 'o', markeredgecolor = 'black', markerfacecolor = 'white')
+
+    def plot_W(self, n, ax = None):
+        if not ax:
+            fig, ax = plt.subplots()
+        ax.bar(np.arange(len(self.best_syn["W"][n-1])), self.best_syn["W"][n-1], color = f"C{n-1}")
+
+    def plot_C(self, n, ax = None):
+        if not ax:
+            fig, ax = plt.subplots()
+        ax.plot(self.best_syn['C'].T[n-1], color = f'C{n-1}')
+
+    def plot_synergies(self, figsize = None):
+        if not figsize:
+            figsize = (10, self.best_n*4)
+        fig, ax = plt.subplots(self.best_n, 2, figsize = figsize)
+        for i in range(self.best_n):
+            self.plot_W(i+1, ax=ax[i,0])
+            self.plot_C(i+1, ax=ax[i,1])
 
 
+x = np.array([[1,2,3,4],[2,3,4,5],[1,3,5,7],[2,4,6,8],[5,6,7,8]])
+msynergy = MuscleSynergy(max_n_components=3)
+msynergy.fit(x, 'symulation')
+msynergy.est_best_n()
+msynergy.vaf_log
+msynergy.plot_vaf()
+msynergy.plot_W(2)
+msynergy.plot_C(2)
+msynergy.plot_synergies()
+# %%
+msynergy._culc_vaf_mus(msynergy.nmf_log["1"])
+# %%
+print(msynergy.best_syn["W"])
+msynergy.plot_W(1)
+# %%
+W = msynergy.best_syn["W"]
+# %%
+fig, ax = plt.subplots()
+ax.bar(np.arange())
