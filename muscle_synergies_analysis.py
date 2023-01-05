@@ -1,100 +1,116 @@
 # %%
 # モジュールのインポート
-import numpy as np
-from matplotlib import pyplot as plt
 import seaborn as sns
 import preprocess as pp
-from sklearn.decomposition import NMF
 
-x = np.array([[1,2,3,4],[2,3,4,5],[1,3,5,7],[2,4,6,8],[5,6,7,8]])
-
-# lossを計算する関数を定義
-def culc_loss(X, n_components = None):
-    nmf = NMF(n_components=n_components)
-    nmf.fit(X)
-    W = nmf.components_
-    C = nmf.fit_transform(X)
-    WC = np.dot(C, W)
-    return np.sum((X - WC)**2), nmf
-
-
-culc_loss(x, 2)
+fname = '../data/Data_original/Young/EMG/sub01/Nagashima_noRAS1.mat'
+degree = 4
+h_freq = 0.5
+l_freq = 250
+n = 100
+dat = pp.EMG(fname)
+# %%
+dat.filering(degree=degree, high_freq=h_freq,low_freq=l_freq)
+dat.smooth()
+dat.epoching(n=n)
+dat_ep = dat.lln_epochs
 
 # %%
-# 局所解に対する関数
-def f_nmf(X, n_components = None, max_iter=20):
-    old_loss, old_nmf = culc_loss(X, n_components=n_components)
-    for i in range(max_iter - 1):
-        loss, nmf = culc_loss(X, n_components=n_components)
-        if loss < old_loss:
-            old_loss = loss
-            old_nmf = nmf
-    return old_nmf
-
-
-nmf = f_nmf(x, 2)
-
+dat.plot_raw()
 # %%
-# vafを計算する関数
-def culc_vaf(X, nmf):
-    W = nmf.components_
-    C = nmf.fit_transform(X)
-    WC = np.dot(C, W)
-    e = X - WC
-    vaf = 1 - (np.sum(e**2)/np.sum(X**2))
-    return vaf
-
-
-culc_vaf(x, nmf)
-
+dat_ep.shape
 # %%
-# 筋ごとのvafを計算する関数
-def culc_vaf_mus(X, nmf, axis = 0):
-    W = nmf.components_
-    C = nmf.fit_transform(X)
-    WC = np.dot(C, W)
-    e = X - WC
-    vaf_mus = []
-    if axis == 0:
-        for i in range(X.shape[1]):
-            xi = X.T[i]
-            ei = e.T[i]
-            vaf_i = 1 - (np.sum(ei**2)/np.sum(xi**2))
-            vaf_mus.append(vaf_i)
-    else:
-        for i in range(X.shape[0]):
-            xi = X[i]
-            ei = e[i]
-            vaf_i = 1 - (np.sum(ei**2)/np.sum(xi**2))
-            vaf_mus.append(vaf_i)
-    return vaf_mus
-
-
-culc_vaf_mus(x, nmf, axis=0)
-
+import numpy as np
+dat_mn = dat_ep.mean(axis=0)
+dat_mn.shape
 # %%
-# 最適なシナジー数を計算する関数
-def est_best_n(x, max_n_components, threshold = 0.75):
-    vaf_log = []
-    nmf_log = {}
-    for n in range(max_n_components):
-        nmf = f_nmf(x,n + 1)
-        vaf = culc_vaf(x, nmf)
-        print(n + 1, vaf)
-        vaf_log.append(vaf)
-        nmf_log[f"{n+1}"] = nmf
-    
-    for i, vaf in enumerate(vaf_log):
-        if vaf > threshold:
-            print(i + 1, vaf)
+import msynergy as ms
+msgy = ms.MuscleSynergy(max_n_components=10, max_iter=1000)
+msgy.fit(dat_mn, 'young_sub01_noRAS')
+msgy.est_best_n()
+msgy.plot_vaf()
+msgy.plot_synergies()
+# %%
+# elderly
+fname = '../data/Data_original/Elderly/EMG/sub05/noRAS1.mat'
+degree = 4
+h_freq = 0.5
+l_freq = 250
+n = 100
+dat = pp.EMG(fname)
+
+dat.filering(degree=degree, high_freq=h_freq,low_freq=l_freq)
+dat.smooth()
+dat.epoching(n=n)
+dat_ep = dat.lln_epochs
+
+dat.plot_raw()
+
+dat_mn = dat_ep.mean(axis=0)
+
+msgy = ms.MuscleSynergy(max_n_components=10, max_iter=1000)
+msgy.fit(dat_mn, 'elderly_sub05_noRAS')
+msgy.est_best_n()
+msgy.plot_vaf()
+msgy.plot_synergies()
+# %%
+import numpy as np
+import numpy.linalg as LA
+def rpca(M, max_iter=800,p_interval=50):
+    def shrinkage_operator(x, tau):
+        return np.sign(x) * np.maximum((np.abs(x) - tau), np.zeros_like(x))
+
+    def svd_thresholding_operator(X, tau):
+        U, S, Vh = LA.svd(X, full_matrices=False)
+        return U @ np.diag(shrinkage_operator(S, tau)) @ Vh
+
+    i = 0
+    S = np.zeros_like(M)
+    Y = np.zeros_like(M)
+    error = np.Inf
+    tol = 1e-4 * LA.norm(M, ord="fro")
+    mu = M.shape[0] * M.shape[1]/(4 * LA.norm(M, ord=1))
+    mu_inv = 1/mu
+    lam = 1/np.sqrt(np.max(M.shape))
+
+    while i < max_iter:
+        L = svd_thresholding_operator(M - S + mu_inv * Y, mu_inv)
+        S = shrinkage_operator(M - L + mu_inv * Y, lam * mu_inv)
+        Y = Y + mu * (M - L - S)
+        error = LA.norm(M - L - S, ord='fro')
+        if i % p_interval == 0:
+            print("step:{} error:{}".format(i, error))
+
+        if error <= tol:
+            print("converted! error:{}".format(error))
             break
-    return i+1, nmf_log
+        i+=1
+    else:
+        print("Not converged")
 
-
-
-
-
-est_best_n(x, 3)
-
-
+    return L, S
+# %%
+L,S = rpca(dat_ep[:,:,0],max_iter=100000)
+# %%
+L.shape
+# %%
+import matplotlib.pyplot as plt
+plt.plot(L.T)
+# %%
+plt.plot(S.T)
+# %%
+plt.plot(dat_ep[:,:,0].T)
+# %%
+len(abs(S).mean(axis=1))
+# %%
+np.var(S)
+# %%
+fig, ax = plt.subplots()
+ax.plot(S.T, color = 'grey')
+ax.plot(S.mean(axis=0),color='red')
+# ax.plot(S.mean(axis=0) - 4*np.std(S,axis=0), color='pink')
+# ax.plot(S.mean(axis=0) + 4*np.std(S,axis=0), color='pink')
+ax.fill_between(np.arange(100),S.mean(axis=0) - 4*np.std(S,axis=0), S.mean(axis=0) + 4*np.std(S,axis=0), color='pink')
+# %%
+type(S)
 # %%

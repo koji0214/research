@@ -6,19 +6,25 @@ import preprocess as pp
 from sklearn.decomposition import NMF
 
 class MuscleSynergy:
-    def __init__(self, max_n_components):
+    label = ["Rt_TA", "Rt_SOL", "Rt_GM", "Rt_GL", "Rt_VM", "Rt_VL", "Rt_Ham", "Lt_TA", 
+             "Lt_SOL", "Lt_GM", "Lt_GL", "Lt_VM", "Lt_VL", "Lt_Ham"]
+    def __init__(self, max_n_components, max_iter = 200, rep = 20, vaf = 0.75, vaf_mus = 0.9):
         self.max_n_components = max_n_components
         self.best_n = None
         self.best_syn = None
         self.vaf_log = "You must do est_best_n function before this command"
         self.nmf_log = "You must do est_best_n function before this command"
+        self.max_iter = max_iter
+        self.rep = rep
+        self.vaf_threshold = vaf
+        self.vaf_mus_threshold = vaf_mus
 
     def fit(self, X, subject):
         self.X = X
         self.subject = subject
 
     def _culc_loss(self, X, n_components = None):
-        nmf = NMF(n_components=n_components)
+        nmf = NMF(n_components=n_components, max_iter=self.max_iter)
         nmf.fit(X)
         W = nmf.components_
         C = nmf.fit_transform(X)
@@ -66,17 +72,17 @@ class MuscleSynergy:
         self.vaf_log = []
         self.nmf_log = {}
         for n in range(self.max_n_components):
-            nmf = self.f_nmf(n+1)
+            nmf = self.f_nmf(n+1, max_iter=self.rep)
             vaf = self._culc_vaf(nmf)
             # print(n + 1, vaf)
             self.vaf_log.append(vaf)
             self.nmf_log[f"{n+1}"] = nmf
         
         for i, vaf in enumerate(self.vaf_log):
-            if vaf > threshold:
+            if vaf > self.vaf_threshold:
                 nmf = self.nmf_log[f"{i+1}"]
                 vaf_mus = self._culc_vaf_mus(nmf)
-                if np.min(vaf_mus) > 0.9:
+                if np.min(vaf_mus) > self.vaf_mus_threshold:
                     print(i+1, vaf, vaf_mus)
                     break
         self.best_n = i+1
@@ -92,12 +98,16 @@ class MuscleSynergy:
     def plot_W(self, n, ax = None):
         if not ax:
             fig, ax = plt.subplots()
-        ax.bar(np.arange(len(self.best_syn["W"][n-1])), self.best_syn["W"][n-1], color = f"C{n-1}")
+        ax.bar(np.arange(len(self.best_syn["W"][n-1])), self.best_syn["W"][n-1], color = f"C{n-1}",
+               tick_label = self.label)
+        ax.tick_params(axis='x', labelrotation=90)
 
     def plot_C(self, n, ax = None):
         if not ax:
             fig, ax = plt.subplots()
-        ax.plot(self.best_syn['C'].T[n-1], color = f'C{n-1}')
+        t = np.linspace(0, 100, len(self.best_syn['C'].T[n-1]))
+        ax.plot(t, self.best_syn['C'].T[n-1], color = f'C{n-1}')
+        ax.set_xlabel("time(%)")
 
     def plot_synergies(self, figsize = None):
         if not figsize:
@@ -106,24 +116,20 @@ class MuscleSynergy:
         for i in range(self.best_n):
             self.plot_W(i+1, ax=ax[i,0])
             self.plot_C(i+1, ax=ax[i,1])
+        plt.suptitle(self.subject)
+        fig.tight_layout()
 
 
-x = np.array([[1,2,3,4],[2,3,4,5],[1,3,5,7],[2,4,6,8],[5,6,7,8]])
-msynergy = MuscleSynergy(max_n_components=3)
-msynergy.fit(x, 'symulation')
-msynergy.est_best_n()
-msynergy.vaf_log
-msynergy.plot_vaf()
-msynergy.plot_W(2)
-msynergy.plot_C(2)
-msynergy.plot_synergies()
-# %%
-msynergy._culc_vaf_mus(msynergy.nmf_log["1"])
-# %%
-print(msynergy.best_syn["W"])
-msynergy.plot_W(1)
-# %%
-W = msynergy.best_syn["W"]
-# %%
-fig, ax = plt.subplots()
-ax.bar(np.arange())
+# x = np.array([[1,2,3,4],[2,3,4,5],[1,3,5,7],[2,4,6,8],[5,6,7,8]])
+# msynergy = MuscleSynergy(max_n_components=3, max_iter=1000,rep=20)
+# msynergy.fit(x, 'symulation')
+# msynergy.est_best_n()
+# msynergy.vaf_log
+# msynergy.plot_vaf()
+# msynergy.plot_W(2)
+# msynergy.plot_C(2)
+# msynergy.plot_synergies()
+# # %%
+# nmf = NMF(n_components=1, verbose=1)
+# nmf.fit(x)
+# # %%
