@@ -94,6 +94,7 @@ class MuscleSynergy:
         if not ax:
             fig, ax = plt.subplots()
         ax.plot(self.vaf_log, '--', color = "black", marker = 'o', markeredgecolor = 'black', markerfacecolor = 'white')
+        ax.set_title(self.subject)
 
     def plot_W(self, n, ax = None):
         if not ax:
@@ -116,20 +117,6 @@ class MuscleSynergy:
         for i in range(self.best_n):
             self.plot_W(i+1, ax=ax[i,0])
             self.plot_C(i+1, ax=ax[i,1])
-        plt.suptitle(self.subject)
+        plt.suptitle(self.subject, y = 0.99)
         fig.tight_layout()
 
-
-# x = np.array([[1,2,3,4],[2,3,4,5],[1,3,5,7],[2,4,6,8],[5,6,7,8]])
-# msynergy = MuscleSynergy(max_n_components=3, max_iter=1000,rep=20)
-# msynergy.fit(x, 'symulation')
-# msynergy.est_best_n()
-# msynergy.vaf_log
-# msynergy.plot_vaf()
-# msynergy.plot_W(2)
-# msynergy.plot_C(2)
-# msynergy.plot_synergies()
-# # %%
-# nmf = NMF(n_components=1, verbose=1)
-# nmf.fit(x)
-# # %%

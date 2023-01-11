@@ -1,6 +1,7 @@
 # %%
 import numpy as np
 import numpy.linalg as LA
+from matplotlib import pyplot as plt
 def rpca_native(M, max_iter=800,p_interval=50):
     def shrinkage_operator(x, tau):
         return np.sign(x) * np.maximum((np.abs(x) - tau), np.zeros_like(x))
@@ -35,7 +36,7 @@ def rpca_native(M, max_iter=800,p_interval=50):
 
     return L, S
 
-def rpca(epochs, max_iter=800,p_interval=50,fix_ep=True, plot=True):
+def rpca(epochs, max_iter=800,p_interval=50,fix_ep=True, plot=True, threshold = 4):
     if plot:
         fig, ax = plt.subplots(epochs.shape[2], 2, figsize = (10, 4*epochs.shape[2]))
     tot_idx = np.ones([epochs.shape[0], epochs.shape[2]], dtype="bool")
@@ -43,6 +44,8 @@ def rpca(epochs, max_iter=800,p_interval=50,fix_ep=True, plot=True):
     for i in range(epochs.shape[2]):
         mus_i = epochs[:,:,i].T
         L, S = rpca_native(mus_i, max_iter=10000)
+        ymin = S.mean(axis=1) - threshold*np.std(S,axis=1)
+        ymax = S.mean(axis=1) + threshold*np.std(S,axis=1)
         idx = [all([all(S.T[i] > ymin), all(S.T[i] < ymax)]) for i in range(S.shape[1])]
         tot_idx[:,i] = idx
         mus_i_fix = mus_i.T[idx].T
@@ -67,62 +70,62 @@ def rpca(epochs, max_iter=800,p_interval=50,fix_ep=True, plot=True):
                 ax[i, 1].plot(epochs_mn[:,i],lw=5, color="k")
     return epochs_mn
 
-# %%
-import preprocess as pp
-import msynergy as ms
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+# # %%
+# import preprocess as pp
+# import msynergy as ms
+# import numpy as np
+# import matplotlib.pyplot as plt
+# import seaborn as sns
 
-fname = '../data/Data_original/Young/EMG/sub01/Nagashima_noRAS1.mat'
-degree = 4
-h_freq = 0.5
-l_freq = 250
-n = 100
-dat = pp.EMG(fname)
-dat.filering(degree=degree,high_freq=h_freq,low_freq=l_freq)
-dat.smooth()
-dat.epoching(n=n)
-dat_ep = dat.lln_epochs
-dat.plot_raw()
+# fname = '../data/Data_original/Young/EMG/sub01/Nagashima_noRAS1.mat'
+# degree = 4
+# h_freq = 0.5
+# l_freq = 250
+# n = 100
+# dat = pp.EMG(fname)
+# dat.filering(degree=degree,high_freq=h_freq,low_freq=l_freq)
+# dat.smooth()
+# dat.epoching(n=n)
+# dat_ep = dat.lln_epochs
+# dat.plot_raw()
 
-# %%
-mus_i = dat_ep[:,:,0].T
-plt.plot(mus_i)
+# # %%
+# mus_i = dat_ep[:,:,0].T
+# plt.plot(mus_i)
 
-# %%
-L,S = rpca_native(mus_i, max_iter=100000)
-plt.plot(L)
-# %%
-plt.plot(S)
-# %%
-fig, ax = plt.subplots()
-ax.plot(S, color = 'grey')
-ax.plot(S.mean(axis=1),color='red')
-ymin = S.mean(axis=1) - 4*np.std(S,axis=1)
-ymax = S.mean(axis=1) + 4*np.std(S,axis=1)
-# ax.plot(ymin, color='pink')
-# ax.plot(ymax, color='pink')
-ax.fill_between(np.arange(100),ymin, ymax, color='pink')
+# # %%
+# L,S = rpca_native(mus_i, max_iter=100000)
+# plt.plot(L)
+# # %%
+# plt.plot(S)
+# # %%
+# fig, ax = plt.subplots()
+# ax.plot(S, color = 'grey')
+# ax.plot(S.mean(axis=1),color='red')
+# ymin = S.mean(axis=1) - 4*np.std(S,axis=1)
+# ymax = S.mean(axis=1) + 4*np.std(S,axis=1)
+# # ax.plot(ymin, color='pink')
+# # ax.plot(ymax, color='pink')
+# ax.fill_between(np.arange(100),ymin, ymax, color='pink')
 
-# %%
-idx = [all([all(S.T[i] > ymin), all(S.T[i] < ymax)]) for i in range(S.shape[1])]
-idx
+# # %%
+# idx = [all([all(S.T[i] > ymin), all(S.T[i] < ymax)]) for i in range(S.shape[1])]
+# idx
 
-# %%
-mus_i_fix = mus_i.T[idx]
-plt.plot(mus_i_fix.T)
-fig, ax = plt.subplots()
-plt.plot(mus_i)
+# # %%
+# mus_i_fix = mus_i.T[idx]
+# plt.plot(mus_i_fix.T)
+# fig, ax = plt.subplots()
+# plt.plot(mus_i)
 
-# %%
-dat_mn = rpca(dat_ep, fix_ep=False)
-#%%
-dat_mn = rpca(dat_ep)
-# %%
-msgy = ms.MuscleSynergy(max_n_components=10, max_iter=1000)
-msgy.fit(dat_mn, 'young_sub01_noRAS')
-msgy.est_best_n()
-msgy.plot_vaf()
-msgy.plot_synergies()
+# # %%
+# dat_mn = rpca(dat_ep, fix_ep=False)
+# #%%
+# dat_mn = rpca(dat_ep)
+# # %%
+# msgy = ms.MuscleSynergy(max_n_components=10, max_iter=1000)
+# msgy.fit(dat_mn, 'young_sub01_noRAS')
+# msgy.est_best_n()
+# msgy.plot_vaf()
+# msgy.plot_synergies()
 
