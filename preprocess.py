@@ -142,7 +142,7 @@ class EMG:
             
             if lln or n:
                 self.lln_epochs = self.lln_list(n)
-            return self.lln_epochs
+            # return self.lln_epochs
         
       
     def lln_list(self, n=100):

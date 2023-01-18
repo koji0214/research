@@ -53,7 +53,8 @@ def rpca(epochs, max_iter=800,p_interval=50,fix_ep=True, plot=True, threshold = 
         if not fix_ep:
             mus_i_mn = mus_i_fix.mean(axis = 1)
             epochs_mn[:,i] = mus_i_mn
-            
+            epochs_fix = "None valiable values"
+            idx = "None valiable values"
             if plot:
                 ax[i, 0].plot(mus_i)
                 ax[i, 1].plot(mus_i_fix)
@@ -68,5 +69,8 @@ def rpca(epochs, max_iter=800,p_interval=50,fix_ep=True, plot=True, threshold = 
                 ax[i, 0].plot(epochs[:,:,i].T)
                 ax[i, 1].plot(epochs_fix[:,:,i].T)
                 ax[i, 1].plot(epochs_mn[:,i],lw=5, color="k")
+        
     res = {"mean":epochs_mn,"fix_epoch":epochs_fix,"fix_idx":idx}
-    return epochs_mn
+    return res
+
+# %%
