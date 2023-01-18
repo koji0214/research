@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 import preprocess as pp
 from sklearn.decomposition import NMF
+from sklearn.preprocessing import MinMaxScaler
 
 class MuscleSynergy:
     label = ["Rt_TA", "Rt_SOL", "Rt_GM", "Rt_GL", "Rt_VM", "Rt_VL", "Rt_Ham", "Lt_TA", 
@@ -19,9 +20,13 @@ class MuscleSynergy:
         self.vaf_threshold = vaf
         self.vaf_mus_threshold = vaf_mus
 
-    def fit(self, X, subject):
-        self.X = X
+    def fit(self, X, subject, scale=True):
         self.subject = subject
+        if scale:
+            scaler = MinMaxScaler()
+            self.X = scaler.fit_transform(X)
+        else:
+            self.X = X
 
     def _culc_loss(self, X, n_components = None):
         nmf = NMF(n_components=n_components, max_iter=self.max_iter)
@@ -83,7 +88,7 @@ class MuscleSynergy:
                 nmf = self.nmf_log[f"{i+1}"]
                 vaf_mus = self._culc_vaf_mus(nmf)
                 if np.min(vaf_mus) > self.vaf_mus_threshold:
-                    print(i+1, vaf, vaf_mus)
+                    # print(i+1, vaf, vaf_mus)
                     break
         self.best_n = i+1
         best_syn = self.nmf_log[f"{i+1}"]
