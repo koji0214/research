@@ -7,6 +7,7 @@ from scipy.interpolate import interp1d
 import seaborn as sns
 # from matplotlib import animation, rc
 # from mpl_toolkits.axes_grid1 import make_axes_locatable
+from rpca import rpca
 
 class EMG:
     # 基本変数の定義
@@ -140,13 +141,13 @@ class EMG:
             self.epochs = emg_epochs
             
             if lln or n:
-                self.lln_list(n)
-            return self.epochs
+                self.lln_epochs = self.lln_list(n)
+            return self.lln_epochs
         
       
     def lln_list(self, n=100):
         if self.lln:
-            ValueError("This Instance cannot be done LLN! It is already done LLN.")
+            ValueError("This Instance cannot be done LLN! It has already done LLN.")
         method = "linear"
         epochs = np.zeros([len(self.epochs), n, self.epochs[0].shape[1]])
         for i, epoch in enumerate(self.epochs):
