@@ -95,7 +95,15 @@ class EMG:
             self.smoothed[ch] = np.abs(sp.signal.hilbert(self.smoothed[ch]))
         self.smoothing = True
     
-  
+    def crop(self, tmin = None, tmax = None):
+        self.raw = self.raw.iloc[tmin:tmax,:]
+        if self.filtered is locals():
+            self.filtered = self.filtered.iloc[tmin:tmax,:]
+        if self.smoothed is locals():
+            self.smoothed = self.smoothed.iloc[tmin:tmax,:]
+        if self.lln:
+            print("You have to retry EMG.epoching method")
+            
     def epoching(self, dat=None, tmin=None, tmax=None, n=None, lln = False, list = True, foot = "Rt_foot"):
         if "Rt" in foot:
             foot = 1
