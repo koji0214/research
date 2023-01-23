@@ -2,7 +2,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
-import preprocess as pp
+import EMG as pp
 from sklearn.decomposition import NMF
 from sklearn.preprocessing import MinMaxScaler
 
