@@ -11,21 +11,37 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
 import pandas as pd
+from EMG import EMG
 
 # %%
-import load
-eeg_path = '../data/Data_original/Young/EEG/Nagashima_noRAS1_Segment_0.edf'
-emg_path = '../data/Data_original/Young/EMG/sub01/Nagashima_noRAS1.mat'
-eeg, emg = load.load(eeg_path, emg_path)
+def add_cadence(eeg, emg, RAS=100):
+  #length = min(eeg.last_samp, len(emg.raw)-1)
+  #foot = emg.events.values[np.newaxis][:length]
+  lng = eeg.last_samp
+  sti = emg.mean_length * RAS/100
+  foot = np.zeros(shape=[1,lng+1])
+  i = 0
+  while(sti*i < lng):
+      foot[:,int(sti*i)] = 1
+      i += 1
+  stim = mne.create_info(ch_names = ["cadence"], sfreq=1000, ch_types = "stim")
+  event = mne.io.RawArray(data = foot, info = stim)
+  #eeg.crop(0, length/1000)
+  eeg.load_data()
+  return eeg.add_channels([event])
 # %%
-events = mne.find_events(eeg, stim_channel = "Heel")
-event_dict = {"Heel":1}
-epochs = mne.Epochs(eeg, events, event_id=event_dict, tmin=-0.5, tmax=1.5,preload=True)
-epochs.plot_image(picks=["Cz"])
-plt.show()
-
-evoked = epochs.average()
-evoked.plot_joint(picks="eeg")
-plt.show()
+def add_RAS(eeg, RAS):
+  lng = eeg.last_samp
+  sti = 60/RAS*1000
+  foot = np.zeros(shape=[1,lng+1])
+  i = 0
+  while(sti*i < lng):
+      foot[:,int(sti*i)] = 1
+      i += 1
+  stim = mne.create_info(ch_names = ["cadence"], sfreq=1000, ch_types = "stim")
+  event = mne.io.RawArray(data = foot, info = stim)
+  eeg.load_data()
+  return eeg.add_channels([event])
 
 # %%
+# preprocessing

@@ -35,16 +35,17 @@ class EMG:
                 la = la.replace(" ", "")
                 self.raw[la] = _dat[0][int(s-1):int(e-1)]
         
+        self.foot_sensor_ = self.raw.iloc[:,14:]
         self.foot_sensor = self.raw.iloc[:,14:]
         self.raw.columns = self.labels
         _rt = self.raw["Rt_foot"].values
         _rt = _rt - min(_rt)
-        _rt[_rt < np.max(_rt)/2] = 0
+        _rt[_rt < np.max(_rt)/3] = 0
         _events = [1 if _rt[j-1] == 0 and _rt[j]>0 else 0 for j in range(len(_rt))]
         
         _lt = self.raw["Lt_foot"].values
         _lt = _lt - min(_lt)
-        _lt[_lt < np.max(_lt)/2] = 0
+        _lt[_lt < np.max(_lt)/3] = 0
         _events2 = [2 if _lt[j-1] == 0 and _lt[j]>0 else 0 for j in range(len(_lt))]
         
         # self.foot_sensor = self.raw.iloc[:,14:]
@@ -57,6 +58,7 @@ class EMG:
         self.foot_sensor = self.raw.iloc[:,14:]
         self.raw = self.raw.iloc[:,:14]   # rawというEMGデータ
         self.raw = self.raw - self.raw.mean()
+        self.cadence = self.culc_cadence()
         
     def approx(self, x, method, n):
         y = np.arange(0, len(x), 1)
@@ -427,4 +429,19 @@ class EMG:
                 sns.heatmap(coherence, ax=a, cmap="inferno")
                 a.set_title(self.coh_titles[i])
     
-    
+    def culc_cadence(self,foot="Rt"):
+        if "Rt" in foot:
+            idx = self.events[self.events == 1].index
+        elif "Lt" in foot:
+            idx = self.events[self.events == 2].index
+        else:
+            KeyError("foot must be 'Rt' or 'Lt'" )
+        
+        length = []
+        for i in range(len(idx)):
+            if i == len(idx)-1:
+                break
+            length.append(idx[i+1]-idx[i])
+        self.mean_length = np.median(length)
+        return 60/self.mean_length*1000
+        
