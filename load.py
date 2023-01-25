@@ -31,7 +31,7 @@ def read_eeg(fname, montage):
 
 def add_event(eeg, emg):
   length = min(eeg.last_samp, len(emg.raw)-1)
-  foot = emg.events.values[np.newaxis][:length]
+  foot = emg.events.values[np.newaxis][:,:length+1]
   stim = mne.create_info(ch_names = ["Heel"], sfreq=1000, ch_types = "stim")
   event = mne.io.RawArray(data = foot, info = stim)
   eeg.crop(0, length/1000)
