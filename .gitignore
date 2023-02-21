@@ -5,3 +5,11 @@ test.py
 .ipynb_checkpoints
 asrpy-main
 asrpy
+.Rproj.user
+.Rhistory
+.RData
+script
+funData_analysis
+data
+FDApy-0.8.7
+script.Rproj

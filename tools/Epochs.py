@@ -5,11 +5,10 @@ import scipy as sp
 import scipy.signal as signal
 from scipy.interpolate import interp1d
 import seaborn as sns
-# from matplotlib import animation, rc
-# from mpl_toolkits.axes_grid1 import make_axes_locatable
-from rpca import rpca
+from tools.rpca import rpca
+from tools.EMG2 import EMG
 
-class EMG:
+class Epochs:
     # 基本変数の定義
     labels = ["Rt_TA", "Rt_SOL", "Rt_GM", "Rt_GL", "Rt_VM", "Rt_VL", "Rt_Ham", "Lt_TA", 
                 "Lt_SOL", "Lt_GM", "Lt_GL", "Lt_VM", "Lt_VL", "Lt_Ham", "Rt_foot", "Lt_foot"]
@@ -59,6 +58,7 @@ class EMG:
         self.raw = self.raw.iloc[:,:14]   # rawというEMGデータ
         self.raw = self.raw - self.raw.mean()
         self.cadence = self.culc_cadence()
+        print(self, len(self.raw))
         
     def approx(self, x, method, n):
         y = np.arange(0, len(x), 1)
@@ -67,9 +67,9 @@ class EMG:
         return f(y_resample)
     
     
-    def filering(self, degree, high_freq = 0.5, low_freq = 500, btype = "bandpass"):
+    def filtering(self, degree = 4, high_freq = 0.5, low_freq = 500, btype = "bandpass"):
         self.high_freq, self.low_freq = high_freq, low_freq
-        self.filtered = self.raw.copy()
+        self.filtered = self.raw.copy().abs()
         
         h_freq = high_freq/self.nyq
         l_freq = low_freq/self.nyq
@@ -192,7 +192,7 @@ class EMG:
             plt.ylim(ymin, ymax)
             plt.ylabel("time(msec)")
     
-    def plot_box(self, foot = "Rt_foot", ax = None, ymax = None, ymin = None, labels = None, strip = True):
+    def plot_box(self, foot = "Rt_foot", ax = None, ymax = None, ymin = None, labels = None, strip = True, showfliers = True):
         if "Rt" in foot:
             idx = self.events[self.events == 1].index
         elif "Lt" in foot:
@@ -210,7 +210,7 @@ class EMG:
         df = pd.DataFrame({f"{labels}" : length})
         df_melt = pd.melt(df)
         
-        sns.boxplot(x = "variable",y = "value", data=df_melt, ax = ax)
+        sns.boxplot(x = "variable",y = "value", data=df_melt, ax = ax, showfliers = showfliers)
         if strip:
             sns.stripplot(x='variable', y='value', data=df_melt, jitter=True, color='black', ax=ax)
 
@@ -225,7 +225,7 @@ class EMG:
         
     
     @staticmethod
-    def comp_epochs(emgs, labels = None, foot = "Rt_foot", ax = None, ymax = None, ymin = None, strip = True):
+    def comp_epochs(emgs, labels = None, foot = "Rt_foot", ax = None, ymax = None, ymin = None, strip = True, showfliers = True):
         if labels == None or len(emgs) != len(labels):
             labels = np.arange(len(emgs))
         if len(emgs) != len(labels):
@@ -251,7 +251,7 @@ class EMG:
                 _dat = pd.DataFrame({"variable":labels[i], "value":length})
                 dat = pd.concat([dat, _dat])
 
-        sns.boxplot(x = "variable",y = "value", data=dat, ax = ax)
+        sns.boxplot(x = "variable",y = "value", data=dat, ax = ax, showfliers = showfliers)
         if strip:
             sns.stripplot(x='variable', y='value', data=dat, jitter=True, color='black', ax=ax)
 
@@ -264,9 +264,6 @@ class EMG:
             ax.set_xlabel("RAS")
             ax.set_ylabel("time(msec)")
         
-    # 異常周期を除外するためのコード(±3SDで除外99.7％)(未実装)
-    def exclude_epoch(self):
-        epochs = self.epochs
 
     def plot_raw(self, figsize=(15, 35), add_mean = True, ymax=None, ymin=None):
         if not self.lln:
@@ -292,142 +289,6 @@ class EMG:
             a.set_xlabel("sycle(%)")
             a.set_ylim(ymin,ymax)
 
-    def plot_corr(self, hist = False, figsize = (12, 35), heatmap = False):
-        if self.lln:
-            ValueError("plot_corr() must be done after epoching(lln=True) or lln_list()")
-        
-        # _mn = self.lln_epochs.mean(axis=0)  # 軸固定できる
-        # plt.plot(_mn)
-        fig, ax = plt.subplots(7,2,figsize=figsize)
-        
-        bigCorr = []
-        for i, a in enumerate(ax.flatten(order="F")):
-            ave = self.lln_epochs[:,:,i].mean(axis=0)
-            # a.plot(ave)
-            ave = pd.Series(ave)
-            corr = []
-            for sig in self.lln_epochs[:,:,i]:
-                sig = pd.Series(sig)
-                corr.append(ave.corr(sig))
-            if not hist:
-                a.plot(np.abs(corr))
-                a.set_ylim(-0.05,1.05)
-                a.set_ylabel("correlation")
-            else:
-                a.hist(np.abs(corr), range=(0,1), bins = 20)
-                # a.set_xlim(-0.05,1.05)
-            bigCorr.append(corr)    
-            a.set_title(self.labels[i])
-        self.bigCorr = pd.DataFrame(bigCorr, index=self.labels[:14])
-        if heatmap:
-            fig, ax = plt.subplots(figsize=(10,8))
-            # plt.imshow(np.abs(self.bigCorr), cmap="inferno", aspect=3)
-            # plt.colorbar()
-            sns.heatmap(np.abs(self.bigCorr), cmap="inferno")
-    
-    # 波形のばらつき具合を条件間で検定
-    @staticmethod
-    def comp_corr(emgs, labels = None, foot = "Rt_foot", ax = None, ymax = None, ymin = None, strip = True):
-        for i, emg in enumerate(emgs):
-            if emg.bigCorr is not locals():
-                ValueError(f"{i+1}th emg has no bigCorr object.")
-            
-        
-        
-       
-    
-    def culc_coherence(self, degree = 4, high_freq = 5, low_freq = 250, average = True):
-        filt = self.filering(degree=degree, high_freq = high_freq, low_freq = low_freq)
-        epoch = self.epoching(filt)
-        nperseg = 512
-        res = np.zeros([int(nperseg/2)+1, 14,14])
-        self.coherence = np.ndarray((1,int(nperseg/2)+1,14,14))
-        self.drop_log = []
-        for a, df in enumerate(epoch):
-            if df.shape[0] < 512:  # 異常な長さのエポックは処理をスキップする
-                self.drop_log.append(f"{a}th epoch is droped because it is too short to calculate coherence")
-                continue
-            for i,la1 in enumerate(df):
-                for j,la2 in enumerate(df):
-                    x = df[la1]
-                    y = df[la2]
-                    f, Cxy = signal.coherence(y, x, fs=1000, nperseg=nperseg)
-                    res[:,i,j] = Cxy
-                    
-            self.coherence = np.append(self.coherence, res[np.newaxis],axis=0)
-        a = 8<=f
-        b = f<13
-        alpha = a==b  # alpha
-        a = 13<=f
-        b = f < 26
-        beta = a==b  #beta
-        a = 26<=f
-        b = f < 30
-        gamma = a==b  #gamma
-        a = 0.5<=f
-        b = f < 4
-        delta = a==b  #delta
-        a = 4<=f
-        b = f < 8
-        theta = a==b  # theta
-        crt = {"alpha 8~13Hz" : alpha, "beta 13~26Hz" : beta, "gamma 26~30Hz" : gamma, "delta 0.5~4Hz" : delta, "theta 4~8Hz" : theta}
-        self.coherence = self.coherence ** 2
-        
-        self.bigCoh = [[] for i in range(5)]  # 周期ごとのcoherenceを記録
-        stack_coh = {"alpha 8~13Hz" : np.zeros([1,14,14]), "beta 13~26Hz" : np.zeros([1,14,14]), "gamma 26~30Hz" : np.zeros([1,14,14]),
-                     "delta 0.5~4Hz" : np.zeros([1,14,14]), "theta 4~8Hz" : np.zeros([1,14,14])}  # epochごとのコヒーレンスをarrayとして記録し、平均する用
-        for coh in self.coherence:
-            for i, ct in enumerate(crt):
-                coherence = coh[crt[ct],:,:].mean(axis=0)
-                stack_coh[ct] = np.append(stack_coh[ct], coherence[np.newaxis], axis = 0)
-                coherence = pd.DataFrame(coherence, index=self.labels[:14], columns=self.labels[:14])
-                self.bigCoh[i].append(coherence)
-
-        if average:
-            self.bigCoh_average = []
-            for st in stack_coh:
-                coh = stack_coh[st]
-                coh = coh.mean(axis=0)
-                self.bigCoh_average.append(coh)
-            
-            return self.bigCoh_average
-
-        return self.bigCoh
-    
-    
-    def plot_coherence(self, average = True):
-        if average:
-            coh = self.bigCoh_average
-            fig, ax = plt.subplots(5,1,figsize=(7,15))
-            for i, (c, a) in enumerate(zip(coh, ax)):
-                im = a.imshow(c)
-                plt.colorbar(im, ax=a)
-                a.set_title(self.coh_titles[i])
-        else:
-            coh = self.bigCoh
-            self.coherence_map = []
-            fig,ax = plt.subplots(5, 1, figsize=(10,20))
-            for i, (_coh, a) in enumerate(zip(coh, ax)):
-                for j, c in enumerate(_coh):
-                    _coherence = []
-                    index = []
-                    for _r in range(14):
-                        for _c in range(14):
-                            if _c >= _r:
-                                continue
-                            index.append(f"{c.index[_c]}-{c.index[_r]}")
-                            _coherence.append(c.iat[_r, _c])
-                    _coherence = pd.Series(_coherence, index=index)
-                    if j == 0:
-                        coherence = _coherence
-                    else:
-                        coherence = pd.concat([coherence, _coherence], axis=1)
-                # im = a.imshow(coherence, cmap="inferno", aspect=0.3)
-                # plt.colorbar(im, ax=a)
-                coherence.columns = np.arange(coherence.shape[1])
-                self.coherence_map.append(coherence)
-                sns.heatmap(coherence, ax=a, cmap="inferno")
-                a.set_title(self.coh_titles[i])
     
     def culc_cadence(self,foot="Rt"):
         if "Rt" in foot:
