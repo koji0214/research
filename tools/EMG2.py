@@ -6,7 +6,7 @@ import scipy.signal as signal
 from scipy.interpolate import interp1d
 import seaborn as sns
 from tools.rpca import rpca
-from tools.Epochs import Epochs
+# from tools.Epochs import Epochs
 
 class EMG:
     # 基本変数の定義
@@ -18,7 +18,7 @@ class EMG:
     smoothing = False # 平滑化
     nyq = sampling_rate/2
     lln = False
-    coh_titles = ["alpha 8~13Hz", "beta 13~26Hz", "gamma 26~30Hz", "delta 0.5~4Hz", "theta 4~8Hz"]
+    # coh_titles = ["alpha 8~13Hz", "beta 13~26Hz", "gamma 26~30Hz", "delta 0.5~4Hz", "theta 4~8Hz"]
     
     def __init__(self, fname):
         mat = sp.io.loadmat(fname)
@@ -26,148 +26,152 @@ class EMG:
         _start_idx = mat["datastart"]
         _end_idx = mat["dataend"]
         
-        self.raw = pd.DataFrame()
+        self.data_matrix = pd.DataFrame()
         for s, e, la in zip(_start_idx, _end_idx, self.labels):
             if s == -1:
                 continue
             else:
-                la = la.replace(" ", "")
-                self.raw[la] = _dat[0][int(s-1):int(e-1)]
+                self.data_matrix[la] = _dat[0][int(s-1):int(e-1)]
         
-        self.foot_sensor_ = self.raw.iloc[:,14:]
-        self.foot_sensor = self.raw.iloc[:,14:]
-        self.raw.columns = self.labels
-        _rt = self.raw["Rt_foot"].values
-        _rt = _rt - min(_rt)
-        _rt[_rt < np.max(_rt)/3] = 0
-        _events = [1 if _rt[j-1] == 0 and _rt[j]>0 else 0 for j in range(len(_rt))]
-        
-        _lt = self.raw["Lt_foot"].values
-        _lt = _lt - min(_lt)
-        _lt[_lt < np.max(_lt)/3] = 0
-        _events2 = [2 if _lt[j-1] == 0 and _lt[j]>0 else 0 for j in range(len(_lt))]
-        
-        # self.foot_sensor = self.raw.iloc[:,14:]
+        self.__data_matrix__ = self.data_matrix.copy()
+        self.__foot_sensor__ = self.data_matrix.iloc[:,14:].copy()
 
-        self.raw["Rt_foot"] = _events
-        self.raw["Lt_foot"] = _events2
+        for i, foo in enumerate(["Rt_foot", "Lt_foot"]):
+            _rt = self.data_matrix[foo].values
+            _rt = _rt - min(_rt)
+            _rt[_rt < np.max(_rt)/3] = 0
+            _events = [i+1 if _rt[j-1] == 0 and _rt[j]>0 else 0 for j in range(len(_rt))]
+            _events = pd.Series(_events)
+            idx = _events[_events != 0].index
+            skip=False
+            for i in range(len(idx)):
+                if i == len(idx)-2:
+                    break
+                elif idx[i] == 0|idx[i-1]==0:
+                    continue
+                elif skip:
+                    skip = False
+                    continue
+                lng = idx[i+2]-idx[i+1]
+                sht = idx[i+1]-idx[i]
+                
+                if lng*2/3>sht:
+                    _events[idx[i+1]]=0
+                    skip = True
+            
+            self.data_matrix[foo] = _events
         
-        _events3 = self.raw.iloc[:,14:]
-        self.events = _events3.max(axis=1)# eventsというイベントデータ(0: no event,1: rt_foot,2: lt_foot)
-        self.foot_sensor = self.raw.iloc[:,14:]
-        self.raw = self.raw.iloc[:,:14]   # rawというEMGデータ
-        self.raw = self.raw - self.raw.mean()
+        self.foot_sensor = self.data_matrix[["Rt_foot", "Lt_foot"]]#.iloc[:,14:]
+        self.events = self.foot_sensor.max(axis=1) # eventsというイベントデータ(0: no event,1: rt_foot,2: lt_foot)
+        
+        emg = self.data_matrix.iloc[:,:14]   # rawというEMGデータ
+        
+        self.emg_matrix = emg - emg.mean()
+        self.emg_raw = self.emg_matrix.copy()
         self.cadence = self.culc_cadence()
-        print(self, len(self.raw))
         
-    def approx(self, x, method, n):
-        y = np.arange(0, len(x), 1)
-        f = interp1d(y, x, kind = method)
-        y_resample = np.linspace(0, len(x)-1, n)
-        return f(y_resample)
+        print(self, len(self.emg_raw)) # pd.DataFrameでデータの詳細について返す
     
-    
-    def filtering(self, degree = 4, high_freq = 0.5, low_freq = 500, btype = "bandpass"):
+    def _reset_data(self):
+        self.emg_matrix = self.data_matrix.iloc[:,:14]
+        self.foot_sensor = self.data_matrix.iloc[:,14:]
+        self.events = self.foot_sensor.max(axis=1)
+
+    def filtering(self, degree = 4, high_freq = 0.5, low_freq = 250, btype = "bandpass"):
         self.high_freq, self.low_freq = high_freq, low_freq
-        self.filtered = self.raw.copy().abs()
+        emg = self.emg_matrix.abs()
         
         h_freq = high_freq/self.nyq
         l_freq = low_freq/self.nyq
         b, a = sp.signal.butter(degree, [h_freq, l_freq], btype=btype)
-        for ch in self.filtered.columns:
-            self.filtered[ch] = sp.signal.filtfilt(b, a, self.filtered[ch])
-        return self.filtered
+        for ch in emg.columns:
+            emg[ch] = sp.signal.filtfilt(b, a, emg[ch])
+        self.data_matrix.iloc[:,:14] = emg
+        self._reset_data
+        # return emg
     
-    
-    
-    def smooth(self, dat=None, freq=20, degree = 4, filtered = False):
-        if self.smoothing and dat is None:
-            ValueError("This Instance is already smoothed!")
-        if dat:
-            self.smoothed = dat
-        elif self.high_freq == None or self.low_freq == None:
-            self.smoothed = self.raw.copy()
-        else:
-            self.smoothed = self.filtered.copy()
+    def smooth(self, freq=20, degree = 4):
         low_pass = degree/self.nyq
+        emg = self.emg_matrix
         
         b2, a2 = sp.signal.butter(degree, low_pass, btype = 'lowpass')
-        for ch in self.smoothed.columns:
-            self.smoothed[ch] = sp.signal.filtfilt(b2, a2, self.smoothed[ch])
-            self.smoothed[ch] = np.abs(sp.signal.hilbert(self.smoothed[ch]))
+        for ch in emg.columns:
+            emg[ch] = sp.signal.filtfilt(b2, a2, emg[ch])
+            emg[ch] = np.abs(sp.signal.hilbert(emg[ch]))
+        
+        self.data_matrix.iloc[:,:14] = emg
+        self._reset_data
         self.smoothing = True
     
     def crop(self, tmin = None, tmax = None):
-        self.raw = self.raw.iloc[tmin:tmax,:]
-        if self.filtered is locals():
-            self.filtered = self.filtered.iloc[tmin:tmax,:]
-        if self.smoothed is locals():
-            self.smoothed = self.smoothed.iloc[tmin:tmax,:]
-        if self.lln:
-            print("You have to retry EMG.epoching method")
+        self.data_matrix = self.data_matrix.iloc[tmin:tmax,:]
+        self.__data_matrix__ = self.__data_matrix__.iloc[tmin:tmax,:]
+        self.__foot_sensor__ = self.__data_matrix__.iloc[tmin:tmax,14:]
+        self.emg_raw = self.emg_raw.iloc[tmin:tmax,:]
+        self._reset_data()
             
-    def epoching(self, dat=None, tmin=None, tmax=None, n=None, lln = False, list = True, foot = "Rt_foot"):
-        if "Rt" in foot:
-            foot = 1
-        elif "Lt" in foot:
-            foot = 2
-        else:
-            KeyError("foot must be 'Rt' or 'Lt'" )
-        event_idx = self.events[self.events == foot].index
+    # def epoching(self, dat=None, tmin=None, tmax=None, n=None, lln = False, list = True, foot = "Rt_foot"):
+    #     if "Rt" in foot:
+    #         foot = 1
+    #     elif "Lt" in foot:
+    #         foot = 2
+    #     else:
+    #         KeyError("foot must be 'Rt' or 'Lt'" )
+    #     event_idx = self.events[self.events == foot].index
         
-        # datはあればそのまま、それ以外では一番最新の前処理をしたところまでのもの
-        if dat is locals():
-            dat = dat
-        elif self.smoothing:
-            dat = self.smoothed
-        elif self.high_freq != None or self.low_freq != None:
-            dat = self.filtered
-        else:
-            dat = self.raw
+    #     # datはあればそのまま、それ以外では一番最新の前処理をしたところまでのもの
+    #     if dat is locals():
+    #         dat = dat
+    #     elif self.smoothing:
+    #         dat = self.smoothed
+    #     elif self.high_freq != None or self.low_freq != None:
+    #         dat = self.filtered
+    #     else:
+    #         dat = self.emg_matrix
 
-        self.epochs = None
-        if tmin or tmax:
-            self.emg_drop_log = []
-            for i, idx in enumerate(event_idx):
-                if i == len(event_idx):
-                    break
-                elif len(dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:]) < (tmax -tmin)*1000:
-                    self.emg_drop_log.append(f"the {i+1}th epoch has too short! exclude this epoch. {len(dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:])}")
-                    continue
-                elif self.epochs is not None:
-                    self.epochs = np.append(self.epochs, dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:].values[np.newaxis], axis=0)
-                else:
-                    self.epochs = dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:].values[np.newaxis]
-            self.lln = True
-            self.lln_epochs = self.epochs
-            return self.epochs
-        else:
-            emg_epochs = []
-            for ev in range(len(event_idx)):
-                if ev+1 == len(event_idx):
-                    break
-                else:
-                    emg_epochs.append(dat.iloc[event_idx[ev]:event_idx[ev+1]])
-            self.epochs = emg_epochs
+    #     self.epochs = None
+    #     if tmin or tmax:
+    #         self.emg_drop_log = []
+    #         for i, idx in enumerate(event_idx):
+    #             if i == len(event_idx):
+    #                 break
+    #             elif len(dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:]) < (tmax -tmin)*1000:
+    #                 self.emg_drop_log.append(f"the {i+1}th epoch has too short! exclude this epoch. {len(dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:])}")
+    #                 continue
+    #             elif self.epochs is not None:
+    #                 self.epochs = np.append(self.epochs, dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:].values[np.newaxis], axis=0)
+    #             else:
+    #                 self.epochs = dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:].values[np.newaxis]
+    #         self.lln = True
+    #         self.lln_epochs = self.epochs
+    #         return self.epochs
+    #     else:
+    #         emg_epochs = []
+    #         for ev in range(len(event_idx)):
+    #             if ev+1 == len(event_idx):
+    #                 break
+    #             else:
+    #                 emg_epochs.append(dat.iloc[event_idx[ev]:event_idx[ev+1]])
+    #         self.epochs = emg_epochs
             
-            if lln or n:
-                self.lln_epochs = self.lln_list(n)
-            # return self.lln_epochs
+    #         if lln or n:
+    #             self.lln_epochs = self.lln_list(n)
+    #         # return self.lln_epochs
         
       
-    def lln_list(self, n=100):
-        if self.lln:
-            ValueError("This Instance cannot be done LLN! It has already done LLN.")
-        method = "linear"
-        epochs = np.zeros([len(self.epochs), n, self.epochs[0].shape[1]])
-        for i, epoch in enumerate(self.epochs):
-            for j, mus in enumerate(epoch):
-                if i == len(self.epochs):
-                    break
-                epochs[i,:,j] = self.approx(epoch[mus], method, n)
-        self.lln_epochs = epochs
-        self.lln = True
-        return self.lln_epochs
+    # def lln_list(self, n=100):
+    #     if self.lln:
+    #         ValueError("This Instance cannot be done LLN! It has already done LLN.")
+    #     method = "linear"
+    #     epochs = np.zeros([len(self.epochs), n, self.epochs[0].shape[1]])
+    #     for i, epoch in enumerate(self.epochs):
+    #         for j, mus in enumerate(epoch):
+    #             if i == len(self.epochs):
+    #                 break
+    #             epochs[i,:,j] = self.approx(epoch[mus], method, n)
+    #     self.lln_epochs = epochs
+    #     self.lln = True
+    #     return self.lln_epochs
 
     def plot_bar(self, foot = "Rt_foot", ax = None, ymax = None, ymin = None):
         if "Rt" in foot:
@@ -289,21 +293,22 @@ class EMG:
             a.set_xlabel("sycle(%)")
             a.set_ylim(ymin,ymax)
 
-    
-    def culc_cadence(self,foot="Rt"):
+    def culc_epoch_len(self, foot = "Rt"):
         if "Rt" in foot:
             idx = self.events[self.events == 1].index
         elif "Lt" in foot:
             idx = self.events[self.events == 2].index
         else:
             KeyError("foot must be 'Rt' or 'Lt'" )
-        
         length = []
         for i in range(len(idx)):
             if i == len(idx)-1:
                 break
             length.append(idx[i+1]-idx[i])
-        self.mean_length = np.median(length)
+        return length
+    
+    def culc_cadence(self,foot="Rt"):
+        self.mean_length = np.median(self.culc_epoch_len())
         return 60/self.mean_length*1000
         
     def make_epochs(self):
