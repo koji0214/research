@@ -8,7 +8,7 @@ import seaborn as sns
 from tools.rpca import rpca
 from tools.EMG2 import EMG
 
-class Epochs:
+class mne_Epochs:
     # 基本変数の定義
     labels = ["Rt_TA", "Rt_SOL", "Rt_GM", "Rt_GL", "Rt_VM", "Rt_VL", "Rt_Ham", "Lt_TA", 
                 "Lt_SOL", "Lt_GM", "Lt_GL", "Lt_VM", "Lt_VL", "Lt_Ham", "Rt_foot", "Lt_foot"]
@@ -306,3 +306,10 @@ class Epochs:
         self.mean_length = np.median(length)
         return 60/self.mean_length*1000
         
+class lln_Epochs:
+    def __init__(self):
+        self.epochs = []
+
+class list_Epochs:
+    def __init__(self):
+        self.epochs = []
