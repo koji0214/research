@@ -313,3 +313,7 @@ class lln_Epochs:
 class list_Epochs:
     def __init__(self):
         self.epochs = []
+
+class fd_Epochs:
+    def __init__(self):
+        self.epochs = []

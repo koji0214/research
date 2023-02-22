@@ -53,16 +53,21 @@ def read_EMG(isyoung = ["Young","Elderly"], ras = ["noRAS1","RAS90","RAS100","RA
 
 def to_list(dict):
     res = []
+    la_isy = []
+    la_sub = []
     for isy in dict:
+        la_isy_ = []
         for sub in dict[isy]:
+            la_sub.append(sub)
             mini_res = [dict[isy][sub][ras] for ras in dict[isy][sub]]
             res.append(mini_res)
-    return res
+            la_isy_.append(isy)
+        la_isy.extend(la_isy_)
+    labels = [la_isy, la_sub]
+    return res, labels
 
-def to_DataFrame(list): # 現状のデータ数での変換。本来は辞書型のデータからidxを作成する。
-    idx = pd.MultiIndex.from_arrays([
-    ['Young', 'Young', 'Young', 'Young','Elderly','Elderly','Elderly','Elderly','Elderly'],
-    ['sub1', 'sub2', 'sub3', 'sub4','sub1', 'sub2', 'sub3', 'sub4','sub5']],
+def to_DataFrame(list, labels):
+    idx = pd.MultiIndex.from_arrays(labels,
     names=['Y_or_E', 'subject'])
 
     res = pd.DataFrame(list,index=idx, 
@@ -70,5 +75,6 @@ def to_DataFrame(list): # 現状のデータ数での変換。本来は辞書型
     return res
 
 def open_dict(dict):
-    return to_DataFrame(to_list(dict))
+    lst,labels = to_list(dict)
+    return to_DataFrame(lst, labels)
     

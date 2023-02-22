@@ -16,7 +16,7 @@ import skfda
 from tools.EMG import EMG
 
 
-from data.reject import reject_list
+# from data.reject import reject_list
 import tools.prep as pp
 ras = ["noRAS1","RAS100","RAS110"]
 ep_list = []
