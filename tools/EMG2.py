@@ -6,12 +6,15 @@ import scipy.signal as signal
 from scipy.interpolate import interp1d
 import seaborn as sns
 from tools.rpca import rpca
-# from tools.Epochs import Epochs
+from tools.function import func_gen_epochs, func_gen_rejects
+from tools.prep import create_epochs, create_align_epochs
 
 class EMG:
     # 基本変数の定義
-    labels = ["Rt_TA", "Rt_SOL", "Rt_GM", "Rt_GL", "Rt_VM", "Rt_VL", "Rt_Ham", "Lt_TA", 
+    _labels = ["Rt_TA", "Rt_SOL", "Rt_GM", "Rt_GL", "Rt_VM", "Rt_VL", "Rt_Ham", "Lt_TA", 
                 "Lt_SOL", "Lt_GM", "Lt_GL", "Lt_VM", "Lt_VL", "Lt_Ham", "Rt_foot", "Lt_foot"]
+    labels = ["Rt_TA", "Rt_SOL", "Rt_GM", "Rt_GL", "Rt_VM", "Rt_VL", "Rt_Ham", "Lt_TA", 
+                "Lt_SOL", "Lt_GM", "Lt_GL", "Lt_VM", "Lt_VL", "Lt_Ham"]
     sampling_rate = 1000  # サンプリングレート
     low_freq = None   # ローパスフィルタ周波数
     high_freq = None  # ハイパスフィルタ周波数
@@ -27,7 +30,7 @@ class EMG:
         _end_idx = mat["dataend"]
         
         self.data_matrix = pd.DataFrame()
-        for s, e, la in zip(_start_idx, _end_idx, self.labels):
+        for s, e, la in zip(_start_idx, _end_idx, self._labels):
             if s == -1:
                 continue
             else:
@@ -82,8 +85,8 @@ class EMG:
         #     print(la) # pd.DataFrameでデータの詳細について返す
     
     def _reset_data(self):
-        self.emg_matrix = self.data_matrix.iloc[:,:14]
-        self.foot_sensor = self.data_matrix.iloc[:,14:]
+        self.emg_matrix = self.data_matrix.iloc[:,:14].copy()
+        self.foot_sensor = self.data_matrix.iloc[:,14:].copy()
         self.events = self.foot_sensor.max(axis=1)
 
     def filtering(self, degree = 4, high_freq = 0.5, low_freq = 250, btype = "bandpass"):
@@ -98,90 +101,36 @@ class EMG:
         self.data_matrix.iloc[:,:14] = emg
         self._reset_data()
     
-    def smooth(self, freq=20, degree = 4):
-        low_pass = degree/self.nyq
-        emg = self.emg_matrix
-        
-        b2, a2 = sp.signal.butter(degree, low_pass, btype = 'lowpass')
-        for ch in emg.columns:
-            emg[ch] = sp.signal.filtfilt(b2, a2, emg[ch])
-            emg[ch] = np.abs(sp.signal.hilbert(emg[ch]))
-        
+    def smooth(self, freq=20, degree = 4, method="low-path", window=100):
+        if self.smoothing:
+            ValueError("This instance has already smoothing!")
+        if method == "low-path":
+            low_pass = degree/self.nyq
+            emg = self.emg_matrix
+            
+            b2, a2 = sp.signal.butter(degree, low_pass, btype = 'lowpass')
+            for ch in emg.columns:
+                emg[ch] = sp.signal.filtfilt(b2, a2, emg[ch])
+                emg[ch] = np.abs(sp.signal.hilbert(emg[ch]))
+        elif method == "movag":
+            emg = self.emg_matrix
+            emg = emg.abs()
+            emg = emg.rolling(window=window).mean()
+        else:
+            KeyError("Method is value error. Use 'low-pass' or 'movag'.")
         self.data_matrix.iloc[:,:14] = emg
         self._reset_data()
         self.smoothing = True
     
     def crop(self, tmin = None, tmax = None):
         tmin, tmax = int(tmin*1000), int(tmax*1000)
-        self.data_matrix = self.data_matrix.iloc[tmin:tmax,:]
+        self.data_matrix = self.data_matrix.iloc[tmin:tmax,:].reset_index(drop=True)
+        # self.data_matrix = self.data_matrix
         self.__data_matrix__ = self.__data_matrix__.iloc[tmin:tmax,:]
         self.__foot_sensor__ = self.__data_matrix__.iloc[tmin:tmax,14:]
         self.emg_raw = self.emg_raw.iloc[tmin:tmax,:]
         self._reset_data()
         return self
-            
-    # def epoching(self, dat=None, tmin=None, tmax=None, n=None, lln = False, list = True, foot = "Rt_foot"):
-    #     if "Rt" in foot:
-    #         foot = 1
-    #     elif "Lt" in foot:
-    #         foot = 2
-    #     else:
-    #         KeyError("foot must be 'Rt' or 'Lt'" )
-    #     event_idx = self.events[self.events == foot].index
-        
-    #     # datはあればそのまま、それ以外では一番最新の前処理をしたところまでのもの
-    #     if dat is locals():
-    #         dat = dat
-    #     elif self.smoothing:
-    #         dat = self.smoothed
-    #     elif self.high_freq != None or self.low_freq != None:
-    #         dat = self.filtered
-    #     else:
-    #         dat = self.emg_matrix
-
-    #     self.epochs = None
-    #     if tmin or tmax:
-    #         self.emg_drop_log = []
-    #         for i, idx in enumerate(event_idx):
-    #             if i == len(event_idx):
-    #                 break
-    #             elif len(dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:]) < (tmax -tmin)*1000:
-    #                 self.emg_drop_log.append(f"the {i+1}th epoch has too short! exclude this epoch. {len(dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:])}")
-    #                 continue
-    #             elif self.epochs is not None:
-    #                 self.epochs = np.append(self.epochs, dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:].values[np.newaxis], axis=0)
-    #             else:
-    #                 self.epochs = dat.iloc[int(idx+tmin*1000):int(idx+tmax*1000),:].values[np.newaxis]
-    #         self.lln = True
-    #         self.lln_epochs = self.epochs
-    #         return self.epochs
-    #     else:
-    #         emg_epochs = []
-    #         for ev in range(len(event_idx)):
-    #             if ev+1 == len(event_idx):
-    #                 break
-    #             else:
-    #                 emg_epochs.append(dat.iloc[event_idx[ev]:event_idx[ev+1]])
-    #         self.epochs = emg_epochs
-            
-    #         if lln or n:
-    #             self.lln_epochs = self.lln_list(n)
-    #         # return self.lln_epochs
-        
-      
-    # def lln_list(self, n=100):
-    #     if self.lln:
-    #         ValueError("This Instance cannot be done LLN! It has already done LLN.")
-    #     method = "linear"
-    #     epochs = np.zeros([len(self.epochs), n, self.epochs[0].shape[1]])
-    #     for i, epoch in enumerate(self.epochs):
-    #         for j, mus in enumerate(epoch):
-    #             if i == len(self.epochs):
-    #                 break
-    #             epochs[i,:,j] = self.approx(epoch[mus], method, n)
-    #     self.lln_epochs = epochs
-    #     self.lln = True
-    #     return self.lln_epochs
 
     def plot_bar(self, foot = "Rt_foot", ax = None, ymax = None, ymin = None):
         length = self.culc_epoch_len(foot=foot)
@@ -269,6 +218,37 @@ class EMG:
     def culc_cadence(self,foot="Rt"):
         self.mean_length = np.median(self.culc_epoch_len())
         return 60/self.mean_length*1000
-        
-    def make_epochs(self):
-        return Epochs()
+    
+    def gen_norm_epochs(self,foot="Rt"):
+        return create_align_epochs(self, foot=foot)  # return 3D-NdArray
+    
+    def gen_unnorm_epochs(self, foot="Rt"):
+        return create_epochs(self, foot=foot)
+
+    def plot_emg(self, figsize=(8,14), add_mean=True, ymin=None,ymax=None, show_all_outliers=True):
+        fig, ax = plt.subplots(7,2,figsize=figsize)
+        epochs = self.gen_norm_epochs()
+        idx = func_gen_rejects(epochs, labels=None)
+
+        x = np.linspace(0,100,100)
+        for i, (a,label) in enumerate(zip(ax.flatten(order="F"), self.labels)):
+            if add_mean:
+                a.plot(x, epochs[idx,:,i].T, color="grey")
+            else:
+                a.plot(x, epochs[idx,:,i].T)
+            a.set_ylabel("amplitude")
+            a.set_xlabel("sycle(%)")
+            a.set_ylim(ymin,ymax)
+            a.set_title(label)
+
+        if add_mean:
+            epochs_mn = epochs[idx,:,:].mean(axis=0)
+            for i, a in enumerate(ax.flatten(order="F")):
+                a.plot(x, epochs_mn[:,i], color="black")
+
+        if show_all_outliers:
+            idx = func_gen_rejects(epochs, labels=None)
+            idx = [not i for i in idx]
+            print(idx.count(True))
+            for i, a in enumerate(ax.flatten(order="F")):
+                a.plot(x, epochs[idx,:,i].T,color="red")
