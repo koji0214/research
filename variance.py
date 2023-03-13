@@ -1,6 +1,6 @@
 # %%
 import os
-os.chdir('/Users/koji/Desktop/research/script/script')
+os.chdir(os.environ["HOME"]+'/Desktop/research/script/script')
 print(os.getcwd())
 import sys
 sys.path.append("./../")
@@ -13,10 +13,11 @@ import scipy.io
 from glob import glob
 from matplotlib import pyplot as plt
 import skfda
-from tools.EMG import EMG
+from tools.EMG2 import EMG
 
 
-# from data.reject import reject_list
+from data.reject import reject_list
+
 import tools.prep as pp
 ras = ["noRAS1","RAS100","RAS110"]
 ep_list = []

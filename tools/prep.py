@@ -1,10 +1,10 @@
 import numpy as np
 import scipy as sp
 import skfda
-from tools.EMG2 import EMG
 from tools.function import approx
 
 def make_epochs(fname):
+    from tools.EMG2 import EMG
     dat = EMG(fname)
     raw = dat.filtering(low_freq = 250)
     raw = raw.abs()
@@ -14,11 +14,14 @@ def make_epochs(fname):
     dat.lln_list(100)
     return dat.lln_epochs
 
-def smoothing(emg):
+def smoothing(emg, labels):
     dat = emg.emg_matrix
     dat = dat.abs()
     dat = dat.rolling(100).mean()
-    emg.emg_matrix = dat
+    emg.data_matrix.iloc[:,:14] = dat
+    emg._reset_data()
+    emg.smoothing = True
+    return emg
 
 def create_epochs(emg, foot="Rt"):
     if "Rt" in foot:

@@ -1,5 +1,5 @@
 # %%
-from EMG import EMG
+from tools.EMG2 import EMG
 import mne
 import numpy as np
 def make_montage(fname):

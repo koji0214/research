@@ -5,7 +5,7 @@ from glob import glob
 import pandas as pd
 # %%
 
-def roop(in_list,func,ras=False):
+def roop(in_list,func,ras=False,dict=False):
     # in_listは条件ごとのリスト
     # Young or Elderly > subject No > RAS condition
     res_list = {}
@@ -18,8 +18,11 @@ def roop(in_list,func,ras=False):
                 for t in sub:
                     res[t] = func(sub[t], s+"_"+tt+"_"+t)
             else:
-                sub_t = [sub[t] for t in sub]
-                res = func(sub_t,s+"_"+tt)
+                if dict:
+                    res = func(sub,s+"_"+tt)
+                else:
+                    sub_t = [sub[t] for t in sub]
+                    res = func(sub_t,s+"_"+tt)
 
             sub_list[tt] = res
         res_list[s] = sub_list
@@ -28,7 +31,7 @@ def roop(in_list,func,ras=False):
 # %%
 def read_EMG(isyoung = ["Young","Elderly"], ras = ["noRAS1","RAS90","RAS100","RAS110"]):
     
-    os.chdir('/Users/koji/Desktop/research/script/script')
+    os.chdir(os.environ["HOME"]+'/Desktop/research/script/script')
     sys.path.append("./../")
     from tools.EMG2 import EMG
     file_path = "../../data/Data_original/"
